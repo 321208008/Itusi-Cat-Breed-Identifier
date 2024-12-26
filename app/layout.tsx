@@ -29,10 +29,10 @@ export default function RootLayout({
       <head>
         {adsenseId && (
           <Script
-            async
+            id="adsbygoogle-script"
             src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-${adsenseId}`}
-            crossOrigin="anonymous"
             strategy="afterInteractive"
+            crossOrigin="anonymous"
           />
         )}
       </head>
