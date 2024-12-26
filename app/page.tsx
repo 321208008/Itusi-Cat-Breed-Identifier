@@ -12,6 +12,64 @@ import { AnalysisView } from '@/components/cat-analysis/analysis-view';
 import { toast } from 'sonner';
 import type { CatAnalysisResult } from '@/lib/api/volcano-engine';
 
+// 图片配置
+const MAX_SIZE = 800; // 最大尺寸为 800px
+const JPEG_QUALITY = 0.9; // JPEG 质量 90%
+
+// 压缩图片
+const compressImage = async (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      // 计算新的尺寸
+      let { width, height } = img;
+      const aspectRatio = width / height;
+
+      if (width > height && width > MAX_SIZE) {
+        width = MAX_SIZE;
+        height = Math.round(width / aspectRatio);
+      } else if (height > MAX_SIZE) {
+        height = MAX_SIZE;
+        width = Math.round(height * aspectRatio);
+      }
+
+      // 创建画布
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      // 使用高质量的图像平滑
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // 绘制图像
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // 转换为 JPEG 格式
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Failed to compress image'));
+            return;
+          }
+          resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        JPEG_QUALITY
+      );
+    };
+
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
+};
+
 export default function Home() {
   const { t } = useI18n();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -22,9 +80,20 @@ export default function Home() {
   const handleAnalysis = async (imageData: string | File) => {
     try {
       setIsAnalyzing(true);
-      const analysisResult = await analyzeCatImage(imageData);
+
+      // 如果是文件，先压缩
+      let processedImageData = imageData;
+      if (imageData instanceof File) {
+        try {
+          processedImageData = await compressImage(imageData);
+        } catch (error) {
+          console.warn('Image compression failed, using original image:', error);
+        }
+      }
+
+      const analysisResult = await analyzeCatImage(processedImageData);
       setResult(analysisResult);
-      setImageUrl(typeof imageData === 'string' ? imageData : URL.createObjectURL(imageData));
+      setImageUrl(typeof processedImageData === 'string' ? processedImageData : URL.createObjectURL(processedImageData));
     } catch (error: any) {
       if (error.message && typeof error.message === 'string') {
         const errorKey = error.message as keyof typeof t;

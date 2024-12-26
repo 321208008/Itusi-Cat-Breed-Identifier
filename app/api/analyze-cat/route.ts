@@ -22,7 +22,32 @@ const openai = new OpenAI({
   apiKey: process.env.ARK_API_KEY || '',
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
   timeout: 25000, // 25秒超时
+  maxRetries: 2, // 最多重试2次
 });
+
+// 创建 AI 分析请求
+const createAnalysisRequest = (imageUrl: string, isEnglish = false) => {
+  return openai.chat.completions.create({
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: isEnglish
+              ? 'What breed is this cat? Please describe its features in detail and provide the breed name and confidence level. The confidence should be based on image quality and feature clarity, ranging from 30% to 95%. Please answer in the following format: Breed: XX Cat, Confidence: XX%, Features: XXX'
+              : '这是什么品种的猫？请详细描述这只猫的特征，并给出品种名称和可信度。可信度要根据图片质量、特征明显程度等实际情况给出，范围在30%-95%之间。请按以下格式回答：品种：xx猫，可信度：xx%，特征描述：xxx',
+          },
+          {
+            type: 'image_url',
+            image_url: { url: imageUrl },
+          },
+        ],
+      },
+    ],
+    model: process.env.ARK_MODEL_ID as string,
+  });
+};
 
 export async function POST(request: Request) {
   try {
@@ -69,109 +94,81 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. 调用 AI API 获取中文描述
-    let chineseResponse;
+    // 3. 并行调用 AI API 获取中英文描述
     try {
-      const modelId = process.env.ARK_MODEL_ID as string;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000); // 20秒后超时
+      const timeout = setTimeout(() => controller.abort(), 20000);
 
       try {
-        chineseResponse = await openai.chat.completions.create({
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: '这是什么品种的猫？请详细描述这只猫的特征，并给出品种名称和可信度。可信度要根据图片质量、特征明显程度等实际情况给出，范围在30%-95%之间。请按以下格式回答：品种：xx猫，可信度：xx%，特征描述：xxx' },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: imageUrl,
-                  },
-                },
-              ],
-            },
-          ],
-          model: modelId,
-        }, {
-          signal: controller.signal
-        });
+        // 并行发起中英文请求
+        const [chineseResponse, englishResponse] = await Promise.all([
+          createAnalysisRequest(imageUrl),
+          createAnalysisRequest(imageUrl, true),
+        ].map(p => p.catch(e => ({ error: e }))));
+
+        // 检查是否有错误发生
+        if ('error' in chineseResponse) {
+          throw chineseResponse.error;
+        }
+
+        const chineseResult = chineseResponse.choices[0]?.message?.content;
+        const englishResult = 'error' in englishResponse 
+          ? undefined 
+          : englishResponse.choices[0]?.message?.content;
+
+        if (!chineseResult) {
+          return NextResponse.json(
+            { error: 'noAnalysisResult', message: '未获取到分析结果' },
+            { status: 500 }
+          );
+        }
+
+        // 4. 解析结果
+        try {
+          let breed = '未知品种';
+          let confidence = 0;
+          let description = chineseResult;
+          let description_en = englishResult || '';
+
+          // 尝试从中文文本中提取品种信息
+          const breedMatch = chineseResult.match(/品种[是为：:]\s*([^，。,\s]+)/);
+          if (breedMatch) {
+            breed = breedMatch[1].replace(/猫$/, '');
+          }
+
+          // 从英文结果中提取品种名称（如果可用）
+          if (englishResult) {
+            const englishBreedMatch = englishResult.match(/Breed[:\s]+([^,\n]+)/i);
+            if (englishBreedMatch) {
+              breed = englishBreedMatch[1].replace(/\s+Cat$/i, '');
+            }
+          }
+
+          // 尝试从文本中提取可信度信息
+          const confidenceMatch = chineseResult.match(/可信度[为是：:]\s*(\d+(?:\.\d+)?)[%％]/);
+          if (confidenceMatch) {
+            confidence = parseFloat(confidenceMatch[1]) / 100;
+          }
+
+          return NextResponse.json({
+            breed,
+            confidence,
+            description,
+            description_en,
+          });
+        } catch (error) {
+          console.error('Failed to parse AI response:', error);
+          return NextResponse.json(
+            { error: 'resultParsing', message: '结果解析失败' },
+            { status: 500 }
+          );
+        }
       } finally {
         clearTimeout(timeout);
-      }
-
-      // 获取英文描述
-      const englishResponse = await openai.chat.completions.create({
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: 'What breed is this cat? Please describe its features in detail and provide the breed name and confidence level. The confidence should be based on image quality and feature clarity, ranging from 30% to 95%. Please answer in the following format: Breed: XX Cat, Confidence: XX%, Features: XXX' },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl,
-                },
-              },
-            ],
-          },
-        ],
-        model: modelId,
-      });
-
-      const chineseResult = chineseResponse.choices[0]?.message?.content;
-      const englishResult = englishResponse.choices[0]?.message?.content;
-
-      if (!chineseResult) {
-        return NextResponse.json(
-          { error: 'noAnalysisResult', message: '未获取到分析结果' },
-          { status: 500 }
-        );
-      }
-
-      // 4. 解析结果
-      try {
-        // 解析中文AI返回的文本，提取品种和可信度信息
-        let breed = '未知品种';
-        let confidence = 0;
-        let description = chineseResult;
-        let description_en = englishResult || '';
-
-        // 尝试从中文文本中提取品种信息
-        const breedMatch = chineseResult.match(/品种[是为：:]\s*([^，。,\s]+)/);
-        if (breedMatch) {
-          breed = breedMatch[1].replace(/猫$/, '');  // 移除"猫"字后缀
-        }
-
-        // 从英文结果中提取品种名称（如果可用）
-        const englishBreedMatch = englishResult?.match(/Breed[:\s]+([^,\n]+)/i);
-        if (englishBreedMatch) {
-          breed = englishBreedMatch[1].replace(/\s+Cat$/i, '');  // 移除"Cat"后缀
-        }
-
-        // 尝试从文本中提取可信度信息
-        const confidenceMatch = chineseResult.match(/可信度[为是：:]\s*(\d+(?:\.\d+)?)[%％]/);
-        if (confidenceMatch) {
-          confidence = parseFloat(confidenceMatch[1]) / 100;
-        }
-
-        return NextResponse.json({
-          breed,
-          confidence,
-          description,
-          description_en,
-        });
-      } catch (error) {
-        console.error('Failed to parse AI response:', error);
-        return NextResponse.json(
-          { error: 'resultParsing', message: '结果解析失败' },
-          { status: 500 }
-        );
       }
     } catch (error: any) {
       console.error('AI API error:', error);
       
-      // 处理超时错误
       if (error.name === 'AbortError' || error.code === 'ETIMEDOUT') {
         return NextResponse.json(
           { error: 'timeout', message: 'AI 服务响应超时，请重试' },
@@ -179,7 +176,6 @@ export async function POST(request: Request) {
         );
       }
       
-      // 处理其他 API 错误
       return NextResponse.json(
         { error: 'aiService', message: 'AI 服务暂时不可用，请稍后重试' },
         { status: 503 }
