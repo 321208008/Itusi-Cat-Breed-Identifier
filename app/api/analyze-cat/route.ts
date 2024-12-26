@@ -5,6 +5,9 @@ import OpenAI from 'openai';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// 设置较长的超时时间
+export const maxDuration = 30; // 设置为30秒
+
 // 检查环境变量
 if (!process.env.ARK_API_KEY) {
   throw new Error('ARK_API_KEY environment variable is not set');
@@ -18,6 +21,7 @@ if (!process.env.ARK_MODEL_ID) {
 const openai = new OpenAI({
   apiKey: process.env.ARK_API_KEY || '',
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+  timeout: 25000, // 25秒超时
 });
 
 export async function POST(request: Request) {
@@ -29,7 +33,7 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error('Failed to parse form data:', error);
       return NextResponse.json(
-        { error: 'invalidRequest' },
+        { error: 'invalidRequest', message: '请求格式无效' },
         { status: 400 }
       );
     }
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
     const imageData = formData.get('image');
     if (!imageData) {
       return NextResponse.json(
-        { error: 'noImageData' },
+        { error: 'noImageData', message: '未找到图片数据' },
         { status: 400 }
       );
     }
@@ -53,14 +57,14 @@ export async function POST(request: Request) {
         imageUrl = `data:${imageData.type};base64,${base64}`;
       } else {
         return NextResponse.json(
-          { error: 'invalidImageFormat' },
+          { error: 'invalidImageFormat', message: '图片格式无效' },
           { status: 400 }
         );
       }
     } catch (error) {
       console.error('Failed to process image:', error);
       return NextResponse.json(
-        { error: 'imageProcessing' },
+        { error: 'imageProcessing', message: '图片处理失败' },
         { status: 500 }
       );
     }
@@ -69,23 +73,32 @@ export async function POST(request: Request) {
     let chineseResponse;
     try {
       const modelId = process.env.ARK_MODEL_ID as string;
-      chineseResponse = await openai.chat.completions.create({
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: '这是什么品种的猫？请详细描述这只猫的特征，并给出品种名称和可信度。可信度要根据图片质量、特征明显程度等实际情况给出，范围在30%-95%之间。请按以下格式回答：品种：xx猫，可信度：xx%，特征描述：xxx' },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl,
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000); // 20秒后超时
+
+      try {
+        chineseResponse = await openai.chat.completions.create({
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: '这是什么品种的猫？请详细描述这只猫的特征，并给出品种名称和可信度。可信度要根据图片质量、特征明显程度等实际情况给出，范围在30%-95%之间。请按以下格式回答：品种：xx猫，可信度：xx%，特征描述：xxx' },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl,
+                  },
                 },
-              },
-            ],
-          },
-        ],
-        model: modelId,
-      });
+              ],
+            },
+          ],
+          model: modelId,
+        }, {
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       // 获取英文描述
       const englishResponse = await openai.chat.completions.create({
@@ -111,7 +124,7 @@ export async function POST(request: Request) {
 
       if (!chineseResult) {
         return NextResponse.json(
-          { error: 'noAnalysisResult' },
+          { error: 'noAnalysisResult', message: '未获取到分析结果' },
           { status: 500 }
         );
       }
@@ -151,21 +164,31 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error('Failed to parse AI response:', error);
         return NextResponse.json(
-          { error: 'resultParsing' },
+          { error: 'resultParsing', message: '结果解析失败' },
           { status: 500 }
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI API error:', error);
+      
+      // 处理超时错误
+      if (error.name === 'AbortError' || error.code === 'ETIMEDOUT') {
+        return NextResponse.json(
+          { error: 'timeout', message: 'AI 服务响应超时，请重试' },
+          { status: 504 }
+        );
+      }
+      
+      // 处理其他 API 错误
       return NextResponse.json(
-        { error: 'aiService' },
+        { error: 'aiService', message: 'AI 服务暂时不可用，请稍后重试' },
         { status: 503 }
       );
     }
   } catch (error) {
     console.error('Unexpected error:', error);
     return NextResponse.json(
-      { error: 'unknown' },
+      { error: 'unknown', message: '发生未知错误，请重试' },
       { status: 500 }
     );
   }

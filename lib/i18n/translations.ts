@@ -26,7 +26,10 @@ export const translations = {
       aiService: "AI 服务暂时休息了，请稍后再试",
       noAnalysisResult: "没有获取到分析结果，请重试",
       resultParsing: "结果解析失败，请重新尝试",
-      unknown: "遇到了一些问题，请重新尝试"
+      unknown: "遇到了一些问题，请重新尝试",
+      timeout: "服务响应超时，请重试",
+      tryAgainLater: "请稍后再试",
+      selectImageFile: "请选择 JPG、PNG 等图片文件"
     },
     result: {
       breed: "猫咪品种",
@@ -104,7 +107,10 @@ export const translations = {
       aiService: "AI service is temporarily unavailable, please try again later",
       noAnalysisResult: "No analysis result received, please retry",
       resultParsing: "Result parsing failed, please try again",
-      unknown: "Something went wrong, please try again"
+      unknown: "Something went wrong, please try again",
+      timeout: "Service response timeout, please try again",
+      tryAgainLater: "Please try again later",
+      selectImageFile: "Please select an image file (JPG, PNG, etc.)"
     },
     result: {
       breed: "Cat Breed",

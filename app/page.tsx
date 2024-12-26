@@ -25,8 +25,17 @@ export default function Home() {
       const analysisResult = await analyzeCatImage(imageData);
       setResult(analysisResult);
       setImageUrl(typeof imageData === 'string' ? imageData : URL.createObjectURL(imageData));
-    } catch (error) {
-      toast.error(t('error.analysis'));
+    } catch (error: any) {
+      if (error.message && typeof error.message === 'string') {
+        const errorKey = error.message as keyof typeof t;
+        toast.error(t(`error.${errorKey}`), {
+          description: error.details || t('error.tryAgainLater'),
+        });
+      } else {
+        toast.error(t('error.analysis'), {
+          description: t('error.tryAgainLater'),
+        });
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -35,6 +44,12 @@ export default function Home() {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast.error(t('error.invalidImageFormat'), {
+          description: t('error.selectImageFile'),
+        });
+        return;
+      }
       await handleAnalysis(file);
     }
   };
@@ -69,7 +84,9 @@ export default function Home() {
     const file = e.dataTransfer.files[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
-        toast.error(t('error.invalidImageFormat'));
+        toast.error(t('error.invalidImageFormat'), {
+          description: t('error.selectImageFile'),
+        });
         return;
       }
       await handleAnalysis(file);
