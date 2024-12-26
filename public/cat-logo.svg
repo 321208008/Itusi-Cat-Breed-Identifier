@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 猫咪头部轮廓 -->
+  <path d="M12 3C7.5 3 4 6.5 4 11C4 14.5 6.5 17.5 10 18.5V20C10 20 10.5 21 12 21C13.5 21 14 20 14 20V18.5C17.5 17.5 20 14.5 20 11C20 6.5 16.5 3 12 3Z" fill="currentColor"/>
+  <!-- 左耳 -->
+  <path d="M7 6L4 3L5 8" fill="currentColor"/>
+  <!-- 右耳 -->
+  <path d="M17 6L20 3L19 8" fill="currentColor"/>
+  <!-- 眼睛 -->
+  <circle cx="9" cy="11" r="1.5" fill="white"/>
+  <circle cx="15" cy="11" r="1.5" fill="white"/>
+  <!-- 鼻子 -->
+  <path d="M12 13L11 14H13L12 13Z" fill="white"/>
+  <!-- 胡须 -->
+  <path d="M8 14L5 13M8 15L5 16M16 14L19 13M16 15L19 16" stroke="white" stroke-width="0.5" stroke-linecap="round"/>
+</svg> 
