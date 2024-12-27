@@ -22,19 +22,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {adsenseId && (
-          <Script
-            id="adsbygoogle-script"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-${adsenseId}`}
-            strategy="afterInteractive"
-            crossOrigin="anonymous"
-          />
-        )}
+        <Script
+          id="adsbygoogle-script"
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9535069756501112"
+          strategy="afterInteractive"
+          crossOrigin="anonymous"
+        />
       </head>
       <body className={inter.className}>
         <Providers>
